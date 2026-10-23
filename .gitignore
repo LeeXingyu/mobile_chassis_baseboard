@@ -1,0 +1,13 @@
+# CubeIDE build output
+Debug/
+Release/
+
+# CubeIDE workspace settings
+.settings/
+
+# CubeMX & IDE temp files
+*.bak
+*.swp
+*.swo
+*.log
+.STM32CubeMX/
