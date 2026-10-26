@@ -1,7 +1,8 @@
 # CubeIDE build output
 Debug/
 Release/
-
+.codegraph/
+.vscode/
 # CubeIDE workspace settings
 .settings/
 

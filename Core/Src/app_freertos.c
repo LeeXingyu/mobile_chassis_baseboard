@@ -24,6 +24,8 @@
 #include "cmsis_os.h"
 
 #include "usb_device.h"
+#include "DYPA22.h"
+#include "usb_cdc_result.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -37,6 +39,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define DYP_STARTUP_CONFIG_ENABLE (0U)
+#define DYP_DEFAULT_ALGORITHM_ENABLE (1U)
+#define DYP_DEFAULT_ANGLE_LEVEL (4U)
+#define DYP_DEFAULT_RANGE_LEVEL (4U)
 
 /* USER CODE END PD */
 
@@ -117,11 +123,27 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_Device */
   MX_USB_Device_Init();
+#if DYP_STARTUP_CONFIG_ENABLE
+  /* Optional one-time sensor setup; enable only when sensor configuration is required. */
+  for (uint8_t sensor = 0U; sensor < SENSOR_COUNT; ++sensor)
+  {
+    uint8_t sensor_id = (uint8_t)(sensor + 1U);
+    (void)Ultrasonic_SetAlgorithm(sensor_id, DYP_DEFAULT_ALGORITHM_ENABLE);
+    (void)Ultrasonic_ConfigSensorLevels(sensor_id,
+                                        DYP_DEFAULT_ANGLE_LEVEL,
+                                        DYP_DEFAULT_RANGE_LEVEL);
+  }
+#endif
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    /* Keep protocol parsing and sensor polling outside interrupt context. */
+    if (Ultrasonic_ServiceTick() != 0U)
+    {
+      (void)UsbCdc_SendUltrasonicResults(g_sensors, SENSOR_COUNT);
+    }
+    osDelay(1000);
   }
   /* USER CODE END StartDefaultTask */
 }
