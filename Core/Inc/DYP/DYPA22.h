@@ -18,11 +18,38 @@ extern uint8_t ULTRASONIC_rx_process_buf[RS485_BUFF_SIZE];
 extern uint8_t ULTRASONIC_tx_buf[RS485_BUFF_SIZE];
 extern uint8_t ULTRASONIC_tx_process_buf[RS485_BUFF_SIZE];
 
+typedef enum {
+    ULTRASONIC_DIAG_OK = 0,
+    ULTRASONIC_DIAG_PARAM,
+    ULTRASONIC_DIAG_TX,
+    ULTRASONIC_DIAG_TIMEOUT,
+    ULTRASONIC_DIAG_LENGTH,
+    ULTRASONIC_DIAG_ADDRESS,
+    ULTRASONIC_DIAG_FUNCTION,
+    ULTRASONIC_DIAG_BYTE_COUNT,
+    ULTRASONIC_DIAG_CRC,
+    ULTRASONIC_DIAG_EXCEPTION
+} Ultrasonic_DiagCode_t;
+
+typedef struct {
+    uint32_t sequence;
+    uint32_t uart_error;
+    uint32_t elapsed_ms;
+    uint16_t rx_length;
+    uint8_t result; /* Existing read return code: 0 OK, 1 TX/parameter, 2 frame, 3 timeout. */
+    uint8_t detail;
+    uint8_t tx_status; /* HAL_OK / HAL_ERROR / HAL_BUSY / HAL_TIMEOUT. */
+    uint8_t exception_code;
+    uint8_t rx_partial; /* 1: timeout snapshot from DMA, not an IDLE-completed frame. */
+    uint8_t rx[RS485_BUFF_SIZE];
+} Ultrasonic_Diagnostic_t;
+
 typedef struct {
     uint8_t id;
     uint16_t distance;
     uint8_t is_valid;
     uint8_t error_cnt;
+    Ultrasonic_Diagnostic_t diagnostic;
 } Ultrasonic_Sensor_t;
 
 extern Ultrasonic_Sensor_t g_sensors[SENSOR_COUNT];

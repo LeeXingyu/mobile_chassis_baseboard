@@ -19,4 +19,9 @@
 
 - Keep DYP protocol helpers in `Core/Inc/DYP/DYPA22.h` and `Core/Src/DYP/DYPA22.c`.
 - Keep interrupt handlers short and avoid blocking calls from ISR context.
+- Keep USB CDC formatting and sending in the CDC module, never in the DYP driver
+  or UART interrupt/error callbacks. The sender is owned by the single polling task.
+- Preserve per-sensor distance-read diagnostics (return code, rejection reason,
+  HAL UART error bits, RX length/raw bytes). UART error callbacks only record
+  errors; diagnostics must not silently change bus timing or recovery behavior.
 - Document functional changes in `README.md`.

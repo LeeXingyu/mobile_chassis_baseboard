@@ -9,9 +9,19 @@ uint8_t ULTRASONIC_tx_process_buf[RS485_BUFF_SIZE];
 
 static volatile uint16_t s_rx_frame_length;
 static volatile uint8_t s_rx_frame_ready;
+static volatile uint32_t s_uart_error;
+static Ultrasonic_Diagnostic_t s_read_diagnostic;
+
+/* Preserve transient HAL errors before a subsequent RX restart clears ErrorCode. */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart2) {
+        s_uart_error |= huart->ErrorCode;
+    }
+}
 
 Ultrasonic_Sensor_t g_sensors[SENSOR_COUNT] = {
-    {1U, 0U, 0U, 0U}, {2U, 0U, 0U, 0U}
+    {.id = 1U}, {.id = 2U}
 };
 
 uint16_t Ultrasonic_ModbusCrc16(const uint8_t *data, uint16_t length)
@@ -88,27 +98,79 @@ static uint8_t validate_response(const uint8_t *frame, uint16_t length,
     return (Ultrasonic_ModbusCrc16(frame, (uint16_t)(length - 2U)) == received_crc) ? 1U : 0U;
 }
 
-/* Send function 0x03 for the DYP-A22 distance register and decode its response. */
+/* Finalize task-owned diagnostics without coupling the protocol layer to USB. */
+static uint8_t finish_read(uint8_t result, Ultrasonic_DiagCode_t detail, uint32_t start)
+{
+    s_read_diagnostic.result = result;
+    s_read_diagnostic.detail = (uint8_t)detail;
+    s_read_diagnostic.uart_error = s_uart_error | huart2.ErrorCode;
+    s_read_diagnostic.elapsed_ms = HAL_GetTick() - start;
+    return result;
+}
+
+/* Record the first observed frame without filtering echoes or changing read behavior. */
 uint8_t Ultrasonic_ModbusReadDistance(uint8_t slave_id, uint16_t *distance)
 {
     const uint8_t request[] = {slave_id, 0x03U, 0x01U, 0x01U, 0x00U, 0x01U};
     uint8_t frame[RS485_BUFF_SIZE];
     uint16_t length = 0U;
     uint32_t start = HAL_GetTick();
-    if ((distance == NULL) || (Ultrasonic_ModbusSend(request, sizeof(request)) != HAL_OK)) {
-        return 1U;
+    uint32_t sequence = s_read_diagnostic.sequence + 1U;
+    memset(&s_read_diagnostic, 0, sizeof(s_read_diagnostic));
+    s_read_diagnostic.sequence = sequence;
+    s_uart_error = 0U;
+    if (distance == NULL) {
+        return finish_read(1U, ULTRASONIC_DIAG_PARAM, start);
+    }
+    s_read_diagnostic.tx_status = (uint8_t)Ultrasonic_ModbusSend(request, sizeof(request));
+    if (s_read_diagnostic.tx_status != HAL_OK) {
+        return finish_read(1U, ULTRASONIC_DIAG_TX, start);
     }
     while ((HAL_GetTick() - start) < ULTRASONIC_RESP_TIMEOUT_MS) {
         if (take_rx_frame(frame, sizeof(frame), &length) != 0U) {
-            if ((length == 7U) && validate_response(frame, length, slave_id, 0x03U) &&
-                (frame[2] == 0x02U)) {
-                *distance = (uint16_t)(((uint16_t)frame[3] << 8U) | frame[4]);
-                return 0U;
+            s_read_diagnostic.rx_length = length;
+            memcpy(s_read_diagnostic.rx, frame, length);
+            if ((length == 5U) && validate_response(frame, length, slave_id, 0x83U)) {
+                s_read_diagnostic.exception_code = frame[2];
+                return finish_read(2U, ULTRASONIC_DIAG_EXCEPTION, start);
             }
-            return 2U;
+            if (length != 7U) {
+                return finish_read(2U, ULTRASONIC_DIAG_LENGTH, start);
+            }
+            if (frame[0] != slave_id) {
+                return finish_read(2U, ULTRASONIC_DIAG_ADDRESS, start);
+            }
+            if (frame[1] != 0x03U) {
+                return finish_read(2U, ULTRASONIC_DIAG_FUNCTION, start);
+            }
+            if (frame[2] != 0x02U) {
+                return finish_read(2U, ULTRASONIC_DIAG_BYTE_COUNT, start);
+            }
+            if (validate_response(frame, length, slave_id, 0x03U) == 0U) {
+                return finish_read(2U, ULTRASONIC_DIAG_CRC, start);
+            }
+            *distance = (uint16_t)(((uint16_t)frame[3] << 8U) | frame[4]);
+            return finish_read(0U, ULTRASONIC_DIAG_OK, start);
         }
     }
-    return 3U;
+    /* Snapshot partial bytes on timeout without stopping DMA or changing RX ownership. */
+    {
+        uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+        if (s_rx_frame_ready != 0U) {
+            s_read_diagnostic.rx_length = s_rx_frame_length;
+            memcpy(s_read_diagnostic.rx, ULTRASONIC_rx_process_buf, s_rx_frame_length);
+        } else if (huart2.RxState == HAL_UART_STATE_BUSY_RX) {
+            uint16_t remaining = (uint16_t)__HAL_DMA_GET_COUNTER(huart2.hdmarx);
+            if (remaining <= RS485_BUFF_SIZE) {
+                s_read_diagnostic.rx_length = (uint16_t)(RS485_BUFF_SIZE - remaining);
+                s_read_diagnostic.rx_partial = 1U;
+                memcpy(s_read_diagnostic.rx, ULTRASONIC_rx_buf, s_read_diagnostic.rx_length);
+            }
+        }
+        __set_PRIMASK(primask);
+    }
+    return finish_read(3U, ULTRASONIC_DIAG_TIMEOUT, start);
 }
 
 /* Send function 0x06 and require the sensor to echo address and value. */
@@ -187,6 +249,7 @@ uint8_t Ultrasonic_ServiceTick(void)
             ++g_sensors[sensor_index].error_cnt;
         }
     }
+    g_sensors[sensor_index].diagnostic = s_read_diagnostic;
     sensor_index = (uint8_t)((sensor_index + 1U) % SENSOR_COUNT);
     if (sensor_index == 0U) {
         return 1U;
