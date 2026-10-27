@@ -62,4 +62,13 @@ the existing polling task.
 
 No CubeMX configuration change is required for this code-only update. The existing USART2, DMA1 channel 1/2, PA2/PA3, and USART2 interrupt settings are used as generated.
 
+## CubeMX code preservation note
+
+CubeMX may overwrite generated source files when code is regenerated. Keep
+application/private additions in the matching `USER CODE BEGIN/END` sections,
+or in dedicated user-owned source/header files. Do not add custom code in the
+generated regions between those markers. Before and after CubeMX regeneration,
+review the affected-file diff and verify all custom code remains; if a required
+user-code insertion point is absent, report it before making dependent changes.
+
 Compilation and hardware verification were intentionally not run, per the change-stage constraint.

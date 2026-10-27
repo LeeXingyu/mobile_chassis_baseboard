@@ -26,7 +26,6 @@
 #include "usb_device.h"
 #include "gpio.h"
 
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "DYPA22.h"

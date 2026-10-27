@@ -5,7 +5,15 @@
 - Work in `baseboard_test`; the N32G032 project under `docs` is reference-only.
 - Target MCU: STM32G474RCTX (STM32G4 HAL/CMSIS, FreeRTOS, STM32CubeIDE-generated project).
 - Do not compile or run generated-binary verification during code-only changes.
-- Preserve CubeMX-generated sections and use `USER CODE` regions for application logic where practical.
+- Treat CubeMX-generated regions as overwriteable. Put private/application code only in
+  the matching `/* USER CODE BEGIN ... */` / `/* USER CODE END ... */` sections of
+  generated files, and use dedicated user-owned source/header files for code that
+  does not belong in those sections. Do not place custom code between generated
+  sections: rerunning CubeMX can delete it.
+- Before changing CubeMX settings or regenerating, identify every touched generated
+  file and confirm custom code is in preserved user sections; afterward review the
+  diff to ensure the custom code remains. If a needed insertion point is missing,
+  stop and report it before proceeding with dependent edits.
 
 ## USART2 / DYP-A22 constraints
 

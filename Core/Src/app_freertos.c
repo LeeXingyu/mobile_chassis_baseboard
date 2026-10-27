@@ -24,12 +24,11 @@
 #include "cmsis_os.h"
 
 #include "usb_device.h"
-#include "DYPA22.h"
-#include "usb_cdc_result.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "DYPA22.h"
+#include "usb_cdc_result.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -123,6 +122,7 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_Device */
   MX_USB_Device_Init();
+  /* USER CODE BEGIN StartDefaultTask */
 #if DYP_STARTUP_CONFIG_ENABLE
   /* Optional one-time sensor setup; enable only when sensor configuration is required. */
   for (uint8_t sensor = 0U; sensor < SENSOR_COUNT; ++sensor)
@@ -134,7 +134,6 @@ void StartDefaultTask(void *argument)
                                         DYP_DEFAULT_RANGE_LEVEL);
   }
 #endif
-  /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
   for(;;)
   {
